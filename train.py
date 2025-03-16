@@ -25,7 +25,7 @@ import torch.backends.cudnn as cudnn
 from options import opt
 import yaml
 
-save_list = Save_Handle(max_num=1)
+# save_list = Save_Handle(max_num=1)
 
 path = "./config/hrt_base.yaml"
 config = yaml.load(open(path, 'r'), yaml.SafeLoader)['MODEL']['HRT']
@@ -33,14 +33,12 @@ config = yaml.load(open(path, 'r'), yaml.SafeLoader)['MODEL']['HRT']
 
 model_name = opt.model_name
 image_root = opt.rgb_root
-gt_root = opt.gt_root
-depth_root = opt.depth_root
-edge_root = opt.edge_root
+dataset = opt.dataset
 
 test_image_root = opt.test_rgb_root
 test_gt_root = opt.test_gt_root
 test_depth_root = opt.test_depth_root
-save_path = opt.save_path
+save_path = os.path.join(opt.save_path, opt.dataset)
 
 # set the path
 if not os.path.exists(save_path):
@@ -99,8 +97,8 @@ best_epoch = 0
 
 # load data
 logger.info('load data...')
-train_loader = get_loader(image_root, gt_root,depth_root, edge_root, batchsize=opt.batchsize, trainsize=opt.trainsize)
-test_loader = test_dataset(test_image_root, test_gt_root,test_depth_root, opt.trainsize)
+train_loader = get_loader(image_root, dataset, batchsize=opt.batchsize, trainsize=opt.trainsize, mode='train')
+# test_loader = test_dataset(test_image_root, test_gt_root,test_depth_root, opt.trainsize)
 total_step = len(train_loader)
 
 # train function
@@ -110,7 +108,7 @@ def train(train_loader, model, optimizer, epoch, save_path):
     loss_all = 0
     epoch_step = 0
     try:
-        for i, (images, gts, depth,edge) in enumerate(train_loader, start=1):
+        for i, (images, gts, depth) in enumerate(train_loader, start=1):
             optimizer.zero_grad()
 
             images = images.cuda()
@@ -127,7 +125,7 @@ def train(train_loader, model, optimizer, epoch, save_path):
             epoch_step += 1
             loss_all += loss.data
             memory_used = torch.cuda.max_memory_allocated() / (1024.0 * 1024.0)
-            if i % 100 == 0 or i == total_step or i == 1:
+            if i % 50 == 0 or i == total_step or i == 1:
 
                 logger.info(
                     '#TRAIN#:Epoch [{:03d}/{:03d}], Step [{:04d}/{:04d}], LR:{:.7f},  sal_loss:{:4f} ||Mem_use:{:.0f}MB'.
@@ -145,15 +143,11 @@ def train(train_loader, model, optimizer, epoch, save_path):
         loss_all /= epoch_step
         logger.info('#TRAIN#:Epoch [{:03d}/{:03d}],Loss_AVG: {:.4f}'.format(epoch, opt.epoch, loss_all))
         writer.add_scalar('Loss-epoch', loss_all, global_step=epoch)
-        if (epoch) % 5 == 0:
-            torch.save(model.state_dict(), save_path + '{}_epoch_{}.pth'.format(model_name,epoch))
-        temp_save_path = save_path + "{}_ckpt.tar".format(epoch)
-        torch.save({
-            'epoch': epoch,
-            'optimizer_state_dict': optimizer.state_dict(),
-            'model_state_dict': model.state_dict()
-        }, temp_save_path)
-        save_list.append(temp_save_path)
+        # if (epoch) % 5 == 0:
+        #     torch.save(model.state_dict(), save_path + '{}_epoch_{}.pth'.format(model_name,epoch))
+        # temp_save_path = save_path + "{}_ckpt.tar".format(epoch)
+        torch.save(model.state_dict(), os.path.join(save_path, 'latest.pth'))
+        # save_list.append(temp_save_path)
 
     except KeyboardInterrupt:
         logger.info('Keyboard Interrupt: save model and exit.')
@@ -163,34 +157,34 @@ def train(train_loader, model, optimizer, epoch, save_path):
         logger.info('save checkpoints successfully!')
         raise
 
-def test(test_loader, model, epoch, save_path):
-    global best_mae, best_epoch
-    model.eval()
-    with torch.no_grad():
-        mae_sum = 0
-        for i in range(test_loader.size):
-            image, gt, depth, name, img_for_post = test_loader.load_data()
+# def test(test_loader, model, epoch, save_path):
+#     global best_mae, best_epoch
+#     model.eval()
+#     with torch.no_grad():
+#         mae_sum = 0
+#         for i in range(test_loader.size):
+#             image, gt, depth, name, img_for_post = test_loader.load_data()
 
-            gt = np.asarray(gt, np.float32)
-            gt /= (gt.max() + 1e-8)
-            image = image.cuda()
-            depth = depth.cuda()
-            res = model(image,depth)
-            res = F.upsample(res, size=gt.shape, mode='bilinear', align_corners=False)
-            res = res.sigmoid().data.cpu().numpy().squeeze()
-            res = (res - res.min()) / (res.max() - res.min() + 1e-8)
-            mae_sum += np.sum(np.abs(res - gt)) * 1.0 / (gt.shape[0] * gt.shape[1])
-        mae = mae_sum / test_loader.size
-        writer.add_scalar('MAE', torch.tensor(mae), global_step=epoch)
-        logger.info('Epoch: {} MAE: {} ####  bestMAE: {} bestEpoch: {}'.format(epoch, mae, best_mae, best_epoch))
-        if epoch == 1:
-            best_mae = mae
-        else:
-            if mae < best_mae:
-                best_mae = mae
-                best_epoch = epoch
-                torch.save(model.state_dict(), save_path + '{}_epoch_best.pth'.format(model_name))
-        logger.info('#TEST#:Epoch:{} MAE:{} bestEpoch:{} bestMAE:{}'.format(epoch, mae, best_epoch, best_mae))
+#             gt = np.asarray(gt, np.float32)
+#             gt /= (gt.max() + 1e-8)
+#             image = image.cuda()
+#             depth = depth.cuda()
+#             res = model(image,depth)
+#             res = F.upsample(res, size=gt.shape, mode='bilinear', align_corners=False)
+#             res = res.sigmoid().data.cpu().numpy().squeeze()
+#             res = (res - res.min()) / (res.max() - res.min() + 1e-8)
+#             mae_sum += np.sum(np.abs(res - gt)) * 1.0 / (gt.shape[0] * gt.shape[1])
+#         mae = mae_sum / test_loader.size
+#         writer.add_scalar('MAE', torch.tensor(mae), global_step=epoch)
+#         logger.info('Epoch: {} MAE: {} ####  bestMAE: {} bestEpoch: {}'.format(epoch, mae, best_mae, best_epoch))
+#         if epoch == 1:
+#             best_mae = mae
+#         else:
+#             if mae < best_mae:
+#                 best_mae = mae
+#                 best_epoch = epoch
+#                 torch.save(model.state_dict(), save_path + '{}_epoch_best.pth'.format(model_name))
+#         logger.info('#TEST#:Epoch:{} MAE:{} bestEpoch:{} bestMAE:{}'.format(epoch, mae, best_epoch, best_mae))
 
 
 if __name__ == '__main__':
@@ -200,4 +194,4 @@ if __name__ == '__main__':
         writer.add_scalar('learning_rate', cur_lr, global_step=epoch)
         train(train_loader, model, optimizer, epoch, save_path)
 
-        test(test_loader, model, epoch, save_path)
+        # test(test_loader, model, epoch, save_path)

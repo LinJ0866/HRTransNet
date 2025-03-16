@@ -22,13 +22,11 @@ parser.add_argument('--cnn_load', type=str, default="./resnet18-5c106cde.pth", h
 
 parser.add_argument('--gpu_id', type=str, default='0', help='train use gpu')
 parser.add_argument('--rgb_root', type=str, default='', help='the training rgb images root')
-parser.add_argument('--depth_root', type=str, default='', help='the training depth images root')
-parser.add_argument('--gt_root', type=str, default='', help='the training gt images root')
-parser.add_argument('--edge_root', type=str, default='', help='can same as depth path, but not used')
+parser.add_argument('--dataset', type=str, choices=['rdvs', 'vidsod_100', 'dvisal'])
 parser.add_argument('--test_rgb_root', type=str, default='', help='the test gt images root')
 parser.add_argument('--test_depth_root', type=str, default='', help='the test gt images root')
 parser.add_argument('--test_gt_root', type=str, default='', help='the test gt images root')
 parser.add_argument('--test_edge_root', type=str, default='', help='not used')
 
-parser.add_argument('--save_path', type=str, default='./HRTransNet/', help='the path to save models and logs')
+parser.add_argument('--save_path', type=str, default='./output', help='the path to save models and logs')
 opt = parser.parse_args()
